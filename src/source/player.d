@@ -3,6 +3,7 @@ module player;
 import common;
 import controls;
 import assets : sHit, sRExplosion, sGameOver, playSfx;
+import upgrades : saveProgress;
 import core.stdc.math : cosf, sinf, expf, fabsf;
 
 // rocket //
@@ -20,6 +21,11 @@ enum float PULL_DRAIN = 0.40f;
 enum float PULL_REGEN = 0.35f;
 enum float PULL_FORCE = 1600.0f;
 enum float PUSH_FORCE = -750.0f;
+
+float pullRange()
+{
+	return PULL_RANGE * pullRangeMul();
+}
 
 // Animation
 __gshared float pullFxAmt = 0; // 0..1, eases in/out
@@ -79,7 +85,7 @@ Actions updateRocket(float dt, Input inp)
 		rocket.vel = vadd(rocket.vel, vmul(nose, ROCKET_ACCEL * dt));
 		burst(vsub(rocket.pos, vmul(nose, 14)), 1, Color(255, 170, 40, 255), 90, 0.35f);
 	}
-	if (inp.brake) rocket.vel = vmul(rocket.vel, expf(-BRAKE_DRAG * dt));
+	if (inp.brake) rocket.vel = vmul(rocket.vel, expf(-BRAKE_DRAG * brakeMul() * dt));
 	float sp = vlen(rocket.vel);
 	if (sp > ROCKET_MAXV) rocket.vel = vmul(rocket.vel, ROCKET_MAXV / sp);
 	rocket.pos = vadd(rocket.pos, vmul(rocket.vel, dt));
@@ -172,6 +178,8 @@ bool damageRocket(Vector2 n)
 		endGame("Rocket destroyed");
 		return true;
 	}
+	// Progressive: losing HP is saved right away, so quitting can't undo it
+	if (gameMode == GameMode.progressive) saveProgress();
 	playSfx(sHit);
 	return false;
 }

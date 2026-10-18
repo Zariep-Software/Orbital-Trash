@@ -22,6 +22,7 @@ __gshared Texture2D explosionTex;
 __gshared Texture2D pullIconTex;
 __gshared Texture2D pushIconTex;
 __gshared Texture2D pauseIconTex;
+__gshared Texture2D upgradesTex;
 __gshared Texture2D[4] trashTex; // indexed by Kind
 __gshared int[4] trashFrames = [1, 1, 1, 1];
 
@@ -126,6 +127,7 @@ void assetsLoadStep()
 			pullIconTex = loadTex("pull.png");
 			pushIconTex = loadTex("push.png");
 			pauseIconTex = loadTex("ui_pause.png");
+			upgradesTex = loadTex("upgrades.png");
 			foreach (i; 0 .. 4)
 			{
 				if (trashTex[i].id != 0 && trashTex[i].height > 0)
@@ -171,6 +173,7 @@ void assetsShutdown()
 	UnloadTexture(pushIconTex);
 	UnloadTexture(pullIconTex);
 	UnloadTexture(pauseIconTex);
+	UnloadTexture(upgradesTex);
 
 	foreach (ref t; trashTex)
 	{

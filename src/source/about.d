@@ -5,7 +5,7 @@ import assets : logoTex;
 import ui;
 import controls : menuUp, menuDown, menuConfirm, menuCancel;
 
-private enum string VERSION_TEXT = "Version: 1.0";
+private enum string VERSION_TEXT = "Version: 1.1";
 private enum const(char)* URL_AUTHOR = "https://zariep.com";
 private enum const(char)* URL_SOURCE = "https://github.com/Zariep-Software/Orbital-Trash";
 private enum const(char)* URL_RAYLIB = "https://www.raylib.com";

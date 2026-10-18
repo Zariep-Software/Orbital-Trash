@@ -4,7 +4,7 @@ Send space garbage out of the atmosphere
 <table style="width: 99%; border-collapse: collapse;">
     <tr>
         <td style="width:30%; text-align: center;">
-            <img src="https://img.itch.zone/aW1nLzI2MDQ0MzcwwLnBuZw==/180x143%23c/r5J0b2.png" alt="WiPersona" style="max-width: 100%; height: auto;" />
+            <img src="https://img.itch.zone/aW1nLzMxMDE2NTIwLnBuZw==/360x286%23c/z29%2FZr.png" alt="WiPersona" style="max-width: 100%; height: auto;" />
         </td>
         <td style="width: 70%; vertical-align: top;">
             <h1>Orbital Trash</h1>

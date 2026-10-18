@@ -19,13 +19,16 @@ __gshared Vector2 stickOrigin;
 __gshared int stickId = -1;
 
 __gshared bool pullDown, brakeDown, pushPressed, pausePressedTouch;
+__gshared int touchShop = -1; // progressive shop button tapped this frame (0..4), else -1
 private __gshared bool prevPush, prevPause;
+private __gshared int prevShop = -1;
 
 // Button layout (game coordinates, bottom-right thumb arc)
 Vector2 pullPos() { return Vector2(W - 120, H - 130); }
 Vector2 pushPos() { return Vector2(W - 270, H - 90); }
 Vector2 brakePos() { return Vector2(W - 250, H - 215); }
-Vector2 pausePos() { return Vector2(W - 60, 60); }
+// Hud at top on android
+Vector2 pausePos() { return Vector2(W - 60, HUD_H + 60); }
 Vector2 stickRest(){ return Vector2(160, H - 150); }
 
 private Vector2 toGame(Vector2 p)
@@ -43,6 +46,7 @@ void touchUpdate()
 {
 	pullDown = brakeDown = false;
 	bool pushHeld = false, pauseHeld = false, stickSeen = false;
+	int shopHeld = -1;
 
 	int n = GetTouchPointCount();
 	foreach (k; 0 .. n)
@@ -74,6 +78,22 @@ void touchUpdate()
 			stickSeen = true;
 			continue;
 		}
+
+		// progressive shop buttons
+		if (gameMode == GameMode.progressive)
+		{
+			bool hitShop = false;
+			foreach (s; 0 .. N_UPG)
+			{
+				if (CheckCollisionPointRec(p, shopRect(s)))
+				{
+					shopHeld = s;
+					hitShop = true;
+				}
+			}
+			if (hitShop) continue;
+		}
+
 		if (inCircle(p, pullPos(), BTN_PULL_R)) pullDown = true;
 		else if (inCircle(p, pushPos(), BTN_PUSH_R)) pushHeld = true;
 		else if (inCircle(p, brakePos(), BTN_BRAKE_R)) brakeDown = true;
@@ -86,8 +106,10 @@ void touchUpdate()
 	}
 	pushPressed = pushHeld && !prevPush;
 	pausePressedTouch = pauseHeld && !prevPause;
+	touchShop = (shopHeld >= 0 && shopHeld != prevShop) ? shopHeld : -1;
 	prevPush = pushHeld;
 	prevPause = pauseHeld;
+	prevShop = shopHeld;
 }
 
 // Turn stick to keyboard input

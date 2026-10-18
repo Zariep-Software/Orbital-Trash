@@ -11,45 +11,83 @@ import ui : centeredTextAt;
 import touch;
 import assets;
 import about;
-import save : loadBest;
+import pickups;
+import upgrades;
+import save : loadBest, loadBestProg, loadBestEndless, loadProg, deleteProg, ProgSave;
 
 // setup
-void startGame()
+
+void beginRun(bool fromSave)
 {
 	resetTrash();
 	resetParticles();
+	resetPickups();
+	resetUpgrades();
 
-	endless = timeLimit <= 0;
+	bool prog = gameMode == GameMode.progressive;
+	endless = prog || timeLimit <= 0;
 	hitFlash = 0;
 	overTimer = 0;
+	toastTimer = 0;
 
 	if (endless)
 	{
-		maxHp = 5;
+		baseMaxHp = 5;
 	}
 	else
 	{
-		maxHp = cast(int)(timeLimit / 20.0f);
-		if (maxHp < 1)
+		baseMaxHp = cast(int)(timeLimit / 20.0f);
+		if (baseMaxHp < 1)
 		{
-			maxHp = 1;
+			baseMaxHp = 1;
 		}
 	}
+
+	ProgSave sv;
+	bool loaded = prog && fromSave && loadProg(sv);
+	if (loaded)
+	{
+		foreach (i; 0 .. N_UPG)
+		{
+			int l = sv.lvl[i];
+			if (l < 0) l = 0;
+			if (l > upgMaxLvl(i)) l = upgMaxLvl(i);
+			upgLvl[i] = l;
+		}
+	}
+	maxHp = baseMaxHp + upgLvl[Upg.hpSlot];
 
 	resetRocket();
 	initCamera();
 
 	score = 0;
+	earned = 0;
 	cleared = 0;
 	totalSpawned = 0;
 	elapsed = 0;
 	perfect = false;
 	hurryPlayed = false;
-	timeLeft = timeLimit;
+	timeLeft = prog ? 0 : timeLimit;
+
+	if (loaded)
+	{
+		score = sv.score < 0 ? 0 : sv.score;
+		earned = sv.earned < 0 ? 0 : sv.earned;
+		cleared = sv.cleared < 0 ? 0 : sv.cleared;
+		elapsed = sv.elapsed < 0 ? 0 : sv.elapsed;
+		rocket.hp = sv.hp < 1 ? 1 : (sv.hp > maxHp ? maxHp : sv.hp);
+	}
 
 	spawnInitialTrash();
 	initialTrash = totalSpawned;
 	state = State.playing;
+
+	if (loaded) showToast("Game loaded");
+}
+
+void startGame()
+{
+	beginRun(false);
 }
 
 // per frame updates
@@ -87,12 +125,21 @@ void updatePlaying(float dt)
 	updateTrashCollisions();
 	updateSpawning(dt);
 
-	// perfect clear
+	if (gameMode == GameMode.arcade && arcadeItems) updatePickups(dt, act);
+
 	if (trashInside() == 0)
 	{
-		score += 100;
-		perfect = true;
-		endGame("Perfect clear!");
+		if (gameMode == GameMode.progressive || endless)
+		{
+			// endless
+			spawnInitialTrash();
+		}
+		else
+		{
+			score += 100;
+			perfect = true;
+			endGame("Perfect clear!");
+		}
 	}
 
 	updateCamera(dt);
@@ -157,16 +204,34 @@ void menuMain()
 	if (clicked >= 0) activateMain(clicked);
 }
 
+private void refreshProgSave()
+{
+	ProgSave sv;
+	progHasSave = loadProg(sv); // disable on web
+	progSaveEarned = progHasSave ? sv.earned : 0;
+}
+
+private void enterProgressiveMenu()
+{
+	refreshProgSave();
+	menuMode = MenuMode.progressive;
+	menuSubSel = progHasSave ? 0 : 1;
+}
+
 private void activatePlay(int sel)
 {
 	switch (sel)
 	{
-		case 0: timeLimit = 60; startGame(); break;
-		case 1: timeLimit = 90; startGame(); break;
-		case 2: timeLimit = 120; startGame(); break;
-		case 3: timeLimit = customSeconds; startGame(); break;
-		case 4: timeLimit = 0; startGame(); break;
-		default: menuMode = MenuMode.main; break;
+		case 0:
+			menuMode = MenuMode.arcade;
+			menuSubSel = 0;
+			break;
+		case 1:
+			enterProgressiveMenu();
+			break;
+		default:
+			menuMode = MenuMode.main;
+			break;
 	}
 }
 
@@ -174,11 +239,6 @@ void menuPlay()
 {
 	if (menuDown()) menuSubSel = (menuSubSel + 1) % PLAY_ITEMS;
 	if (menuUp()) menuSubSel = (menuSubSel + PLAY_ITEMS - 1) % PLAY_ITEMS;
-	if (menuSubSel == 3)
-	{
-		if (menuRight()) changeCustomSeconds(10);
-		if (menuLeft()) changeCustomSeconds(-10);
-	}
 	if (menuCancel())
 	{
 		menuMode = MenuMode.main;
@@ -193,19 +253,185 @@ void menuPlay()
 	if (clicked >= 0) activatePlay(clicked);
 }
 
-void menuScreen()
+// Arcade menu
+
+private void startArcade()
 {
-	if (menuMode == MenuMode.main) menuMain();
-	else if (menuMode == MenuMode.play) menuPlay();
+	gameMode = GameMode.arcade;
+	startGame();
+}
+
+private void activateArcade(int sel)
+{
+	switch (sel)
+	{
+		case 0: timeLimit = 60; startArcade(); break;
+		case 1: timeLimit = 90; startArcade(); break;
+		case 2: timeLimit = 120; startArcade(); break;
+		case 3: timeLimit = customSeconds; startArcade(); break;
+		case 4: timeLimit = 0; startArcade(); break;
+		case 5: arcadeItems = !arcadeItems; break;
+		default:
+			menuMode = MenuMode.play;
+			menuSubSel = 0;
+			break;
+	}
+}
+
+void menuArcade()
+{
+	if (menuDown()) menuSubSel = (menuSubSel + 1) % ARCADE_ITEMS;
+	if (menuUp()) menuSubSel = (menuSubSel + ARCADE_ITEMS - 1) % ARCADE_ITEMS;
+	if (menuSubSel == 3)
+	{
+		if (menuRight()) changeCustomSeconds(10);
+		if (menuLeft()) changeCustomSeconds(-10);
+	}
+	if (menuSubSel == 5)
+	{
+		if (menuRight() || menuLeft()) arcadeItems = !arcadeItems;
+	}
+	if (menuCancel())
+	{
+		menuMode = MenuMode.play;
+		menuSubSel = 0;
+		return;
+	}
+	if (menuConfirm())
+	{
+		activateArcade(menuSubSel);
+		return;
+	}
+	int clicked = drawMenuArcade();
+	if (clicked >= 0) activateArcade(clicked);
+}
+
+// Progressive menu
+
+private bool progItemEnabled(int i)
+{
+	return i != 0 || progHasSave;
+}
+
+private int nextProgItem(int cur, int dir)
+{
+	int i = cur;
+	foreach (_; 0 .. PROG_ITEMS)
+	{
+		i = (i + dir + PROG_ITEMS) % PROG_ITEMS;
+		if (progItemEnabled(i)) return i;
+	}
+	return cur;
+}
+
+private void startProgressiveNew()
+{
+	gameMode = GameMode.progressive;
+	deleteProg();
+	beginRun(false);
+}
+
+private void activateProgressive(int sel)
+{
+	switch (sel)
+	{
+		case 0: // Continue
+			if (!progHasSave) break;
+			gameMode = GameMode.progressive;
+			beginRun(true);
+			break;
+		case 1:
+			if (progHasSave)
+			{
+				menuMode = MenuMode.confirmNew;
+				menuSubSel = 1; // default to Cancel
+			}
+			else startProgressiveNew();
+			break;
+		default:
+			menuMode = MenuMode.play;
+			menuSubSel = 1;
+			break;
+	}
+}
+
+void menuProgressive()
+{
+	if (menuDown()) menuSubSel = nextProgItem(menuSubSel, 1);
+	if (menuUp()) menuSubSel = nextProgItem(menuSubSel, -1);
+	if (menuCancel())
+	{
+		menuMode = MenuMode.play;
+		menuSubSel = 1;
+		return;
+	}
+	if (menuConfirm())
+	{
+		activateProgressive(menuSubSel);
+		return;
+	}
+	int clicked = drawMenuProgressive();
+	if (clicked >= 0) activateProgressive(clicked);
+}
+
+// "Erase saved game?" dialog
+private void activateConfirm(int sel)
+{
+	if (sel == 0) startProgressiveNew();
 	else
 	{
-		drawMenuBackground();
-		if (aboutUpdateDraw())
-		{
-			menuMode = MenuMode.main;
-			aboutFocus = true;
-		}
+		menuMode = MenuMode.progressive;
+		menuSubSel = 1;
 	}
+}
+
+void menuConfirmNew()
+{
+	if (menuDown() || menuUp()) menuSubSel = (menuSubSel + 1) % 2;
+	if (menuCancel())
+	{
+		activateConfirm(1);
+		return;
+	}
+	if (menuConfirm())
+	{
+		activateConfirm(menuSubSel);
+		return;
+	}
+	int clicked = drawMenuConfirm();
+	if (clicked >= 0) activateConfirm(clicked);
+}
+
+void menuScreen()
+{
+	final switch (menuMode)
+	{
+		case MenuMode.main: menuMain(); break;
+		case MenuMode.play: menuPlay(); break;
+		case MenuMode.arcade: menuArcade(); break;
+		case MenuMode.progressive: menuProgressive(); break;
+		case MenuMode.confirmNew: menuConfirmNew(); break;
+		case MenuMode.about:
+			drawMenuBackground();
+			if (aboutUpdateDraw())
+			{
+				menuMode = MenuMode.main;
+				aboutFocus = true;
+			}
+			break;
+	}
+}
+
+// Progressive shop:
+private void handleShop()
+{
+	int pick = shopKeyPressed();
+	if (pick < 0) pick = shopClick;
+	version (Android)
+	{
+		if (pick < 0) pick = touchShop;
+	}
+	if (pick >= 0) buyUpgrade(pick);
 }
 
 void playScreen(float dt)
@@ -223,9 +449,9 @@ void playScreen(float dt)
 	}
 	updateParticles(dt);
 	drawPlayScreen();
-}
 
-enum int PAUSE_ITEMS = 3; // continue, settings, menu
+	if (gameMode == GameMode.progressive && state == State.playing) handleShop();
+}
 
 private void goToMenu()
 {
@@ -236,16 +462,21 @@ private void goToMenu()
 
 private void activatePause(int sel)
 {
-	switch (sel)
+	final switch (pauseAct(sel))
 	{
-		case 0:
+		case PauseAct.cont:
 			state = State.playing;
 			break;
-		case 1:
+		case PauseAct.save:
+			saveProgress();
+			showToast("Game saved");
+			break;
+		case PauseAct.settings:
 			settingsFromPause = true;
 			state = State.settings;
 			break;
-		default:
+		case PauseAct.exit:
+			if (gameMode == GameMode.progressive && CAN_SAVE) saveProgress();
 			goToMenu();
 			break;
 	}
@@ -259,8 +490,9 @@ void pauseScreen()
 		state = State.playing;
 		return;
 	}
-	if (menuDown()) menuSel = (menuSel + 1) % PAUSE_ITEMS;
-	if (menuUp()) menuSel = (menuSel + PAUSE_ITEMS - 1) % PAUSE_ITEMS;
+	int n = pauseCount();
+	if (menuDown()) menuSel = (menuSel + 1) % n;
+	if (menuUp()) menuSel = (menuSel + n - 1) % n;
 	if (menuConfirm())
 	{
 		activatePause(menuSel);
@@ -322,7 +554,7 @@ void settingsScreen()
 		if (settingsFromPause)
 		{
 			state = State.paused;
-			menuSel = 1;
+			menuSel = pauseSettingsIndex();
 		}
 		else
 		{
@@ -350,6 +582,8 @@ void loadingScreen()
 	{
 		settingsInit();
 		bestScore = loadBest();
+		bestProg = loadBestProg();
+		bestEndless = loadBestEndless();
 		state = State.menu;
 		menuMode = MenuMode.main;
 	}

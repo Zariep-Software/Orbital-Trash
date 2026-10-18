@@ -4,6 +4,8 @@ import common;
 import assets;
 import player;
 import trash;
+import pickups : pickList, PICK_R;
+import upgrades : UPG_COLOR, drawUpgIcon;
 import ui;
 import hud;
 import touch: drawTouchControls;
@@ -22,13 +24,16 @@ void initStars()
 
 void initCamera()
 {
-	cam = Camera2D(Vector2(W / 2.0f, PLAY_H / 2.0f), rocket.pos, 0, 3);
+	cam = Camera2D(Vector2(W / 2.0f, playTop() + PLAY_H / 2.0f), rocket.pos, 0, 3);
 }
 
 void updateCamera(float dt)
 {
 	float INITIAL_ZOOM = 1.4f;
 	float URGENCY_ADD = 1.0f;
+
+	// keep the view centred in the play area (HUD may be on top or bottom, window may resize)
+	cam.offset = Vector2(W / 2.0f, playTop() + PLAY_H / 2.0f);
 
 	// Real initial zoom | Urgency zoom
 	float targetZoom = INITIAL_ZOOM + URGENCY_ADD * urgency();
@@ -148,6 +153,26 @@ void drawTrash()
 	}
 }
 
+// Arcade upgrade items
+void drawPickups()
+{
+	foreach (ref p; pickList)
+	{
+		if (!p.alive) continue;
+		// blink during the last seconds
+		if (p.life < 6.0f && (cast(int)(p.life * 5.0f)) % 2 == 0) continue;
+
+		Color c = UPG_COLOR[p.id];
+		float pulse = 0.5f + 0.5f * sinf(p.life * 5.0f);
+		DrawCircleV(p.pos, PICK_R + 5.0f + 4.0f * pulse, Color(c.r, c.g, c.b, 50));
+		DrawCircleV(p.pos, PICK_R, Color(14, 18, 34, 255));
+		DrawRing(p.pos, PICK_R - 3, PICK_R, 0, 360, 32, c);
+		// int tw = measureText(UPG_GLYPH[p.id], 18);
+		// drawText(UPG_GLYPH[p.id], cast(int)(p.pos.x - tw * 0.5f), cast(int)(p.pos.y - 9), 18, c);
+		drawUpgIcon(p.id, p.pos, 18, c);
+	}
+}
+
 // HUD //
 void drawBar(int x, int y, int w, int h, float frac, Color c, const(char)* label)
 {
@@ -210,7 +235,7 @@ void drawWorld()
 	if (pullFxAmt > 0.01f)
 	{
 		float e = 1.0f - (1.0f - pullFxAmt) * (1.0f - pullFxAmt); // ease-out
-		float outer = PULL_RANGE * e;// grows on activate, shrinks on release
+		float outer = pullRange() * e;// grows on activate, shrinks on release
 		DrawCircleV(rocket.pos, outer, Color(60, 140, 255, cast(ubyte)(28 * pullFxAmt)));
 		enum int RINGS = 4;
 		foreach (i; 0 .. RINGS)
@@ -231,10 +256,19 @@ void drawWorld()
 	}
 
 	drawTrash();
+	drawPickups();
 	drawParticles();
 	drawDeathExplosion();
 	if (state != State.over || rocket.hp > 0) drawRocket();
 	EndMode2D();
+}
+
+void drawToast()
+{
+	if (toastTimer <= 0) return;
+	toastTimer -= GetFrameTime();
+	float k = clampf(toastTimer / 0.5f, 0, 1); // fades during the last half second
+	centerText(toastText.ptr, playTop() + 20, 26, fadeColor(Color(255, 230, 120, 255), k));
 }
 
 void drawScene()
@@ -242,6 +276,7 @@ void drawScene()
 	drawWorld();
 	drawHUD();
 	// drawMinimap();
+	drawToast();
 	if (hitFlash > 0)
 	{
 		float k = clampf(hitFlash / 0.35f, 0, 1);
@@ -330,15 +365,38 @@ int drawMenuPlay()
 	drawMenuBackground();
 	drawMenuTitle();
 
-	char[48] buf;
-	const(char)*[PLAY_ITEMS] items = ["60 Seconds", "90 Seconds", "120 Seconds", "Custom", "Endless", "Back"];
-
-	enum float STEP = 44;
-	enum float BTN_H = 38;
-	float y0 = H - 40 - (PLAY_ITEMS * STEP - (STEP - BTN_H));
+	const(char)*[PLAY_ITEMS] items = ["Arcade", "Progressive", "Back"];
+	enum float STEP = 56;
+	float y0 = H - 40 - (PLAY_ITEMS * STEP - 8);
 
 	int clicked = -1;
 	foreach (i; 0 .. PLAY_ITEMS)
+	{
+		Rectangle r = Rectangle(W * 0.5f - 160, y0 + i * STEP, 320, 48);
+		hoverSelect(r, menuSubSel, cast(int) i);
+		if (techButton(r, items[i], 30, i == menuSubSel))
+		{
+			menuSubSel = cast(int) i;
+			clicked = cast(int) i;
+		}
+	}
+	return clicked;
+}
+
+int drawMenuArcade()
+{
+	drawMenuBackground();
+	drawMenuTitle();
+
+	char[48] buf;
+	const(char)*[ARCADE_ITEMS] items = ["60 Seconds", "90 Seconds", "120 Seconds", "Custom", "Survival", "Items", "Back"];
+
+	enum float STEP = 42;
+	enum float BTN_H = 36;
+	float y0 = H - 40 - (ARCADE_ITEMS * STEP - (STEP - BTN_H));
+
+	int clicked = -1;
+	foreach (i; 0 .. ARCADE_ITEMS)
 	{
 		Rectangle r = Rectangle(W * 0.5f - 160, y0 + i * STEP, 320, BTN_H);
 		if (i == 3)
@@ -357,12 +415,84 @@ int drawMenuPlay()
 				changeCustomSeconds(10);
 			}
 		}
+		else if (i == 5)
+		{
+			const(char)* onoff = arcadeItems ? "ON" : "OFF";
+			snprintf(buf.ptr, buf.length, "Items: %s", onoff);
+		}
 		else
 		{
 			snprintf(buf.ptr, buf.length, "%s", items[i]);
 		}
 		hoverSelect(r, menuSubSel, cast(int) i);
 		if (techButton(r, buf.ptr, 26, i == menuSubSel))
+		{
+			menuSubSel = cast(int) i;
+			clicked = cast(int) i;
+		}
+	}
+	return clicked;
+}
+
+int drawMenuProgressive()
+{
+	drawMenuBackground();
+	drawMenuTitle();
+
+	version (WebAssembly) const(char)* newLabel = "Try Progressive demo";
+	else const(char)* newLabel = "New Game";
+	const(char)*[PROG_ITEMS] items = ["Continue", newLabel, "Back"];
+
+	enum float STEP = 56;
+	float y0 = H - 40 - (PROG_ITEMS * STEP - 8);
+
+	// info line above the buttons
+	char[64] info;
+	version (WebAssembly)
+	{
+		centerText("Browser demo: progress can't be saved", cast(int)(y0 - 36), 20, Color(200, 200, 215, 255));
+	}
+	else if (progHasSave)
+	{
+		snprintf(info.ptr, info.length, "Saved run: %d points earned", progSaveEarned);
+		centerText(info.ptr, cast(int)(y0 - 36), 20, Color(255, 230, 120, 255));
+	}
+
+	int clicked = -1;
+	foreach (i; 0 .. PROG_ITEMS)
+	{
+		bool enabled = i != 0 || progHasSave; // Continue needs a save
+		Rectangle r = Rectangle(W * 0.5f - 160, y0 + i * STEP, 320, 48);
+		if (enabled) hoverSelect(r, menuSubSel, cast(int) i);
+		if (techButton(r, items[i], 26, enabled && i == menuSubSel, enabled ? 1.0f : 0.35f) && enabled)
+		{
+			menuSubSel = cast(int) i;
+			clicked = cast(int) i;
+		}
+	}
+	return clicked;
+}
+
+int drawMenuConfirm()
+{
+	drawMenuBackground();
+	DrawRectangle(0, 0, W, H, Color(0, 0, 0, 150));
+
+	Rectangle panel = Rectangle(W * 0.5f - 260, H * 0.5f - 150, 520, 300);
+	DrawRectangleRounded(panel, 0.04f, 8, Color(16, 18, 32, 245));
+	DrawRectangleRoundedLines(panel, 0.04f, 8, Color(120, 130, 170, 255));
+
+	centeredTextAt("ERASE SAVED GAME?", 34, W * 0.5f, panel.y + 30, Color(255, 230, 120, 255));
+	centeredTextAt("Your saved Progressive run will be lost.", 20, W * 0.5f, panel.y + 85,
+		Color(220, 225, 245, 255));
+
+	const(char)*[2] items = ["Yes, start new game", "Cancel"];
+	int clicked = -1;
+	foreach (i; 0 .. 2)
+	{
+		Rectangle r = Rectangle(W * 0.5f - 160, panel.y + 140 + i * 64, 320, 48);
+		hoverSelect(r, menuSubSel, cast(int) i);
+		if (techButton(r, items[i], 26, i == menuSubSel))
 		{
 			menuSubSel = cast(int) i;
 			clicked = cast(int) i;
@@ -401,13 +531,28 @@ void drawPlayScreen()
 	version (Android) drawTouchControls();
 }
 
+private const(char)* pauseLabel(PauseAct a)
+{
+	final switch (a)
+	{
+		case PauseAct.cont: return "Continue";
+		case PauseAct.save: return "Save game";
+		case PauseAct.settings: return "Settings";
+		case PauseAct.exit:
+			return (gameMode == GameMode.progressive && CAN_SAVE) ? "Save & Exit" : "Go to menu";
+	}
+}
+
 int drawPauseScreen()
 {
 	drawScene();
 	DrawRectangle(0, 0, W, H, Color(0, 0, 0, 150));
 	centerText("PAUSED", 200, 56, Color(255, 255, 255, 255));
-	const(char)*[3] items = ["Continue", "Settings", "Go to menu"];
-	return techList(items[], 300, 60);
+
+	const(char)*[4] items;
+	int n = pauseCount();
+	foreach (i; 0 .. n) items[i] = pauseLabel(pauseAct(cast(int) i));
+	return techList(items[0 .. n], 300, 60);
 }
 
 int drawOverScreen()
@@ -423,12 +568,36 @@ int drawOverScreen()
 	centerText("GAME OVER", 110, 56, fadeColor(Color(255, 120, 120, 255), k));
 	centerText(endReason, 180, 30,
 		fadeColor(perfect ? Color(120, 255, 170, 255) : Color(230, 230, 240, 255), k));
-	snprintf(buf.ptr, buf.length, "Final score: %d", score);
-	centerText(buf.ptr, 245, 32, fadeColor(Color(255, 230, 120, 255), k));
-	snprintf(buf.ptr, buf.length, "Trash cleared: %d / %d", cleared, totalSpawned);
-	centerText(buf.ptr, 295, 28, fadeColor(Color(220, 230, 255, 255), k));
-	snprintf(buf.ptr, buf.length, "Best score: %d", bestScore);
-	centerText(buf.ptr, 338, 28, fadeColor(Color(220, 230, 255, 255), k));
+
+	if (gameMode == GameMode.progressive)
+	{
+		snprintf(buf.ptr, buf.length, "Points earned: %d", earned);
+		centerText(buf.ptr, 245, 32, fadeColor(Color(255, 230, 120, 255), k));
+		snprintf(buf.ptr, buf.length, "Trash cleared: %d", cleared);
+		centerText(buf.ptr, 295, 28, fadeColor(Color(220, 230, 255, 255), k));
+		snprintf(buf.ptr, buf.length, "Best run: %d", bestProg);
+		centerText(buf.ptr, 338, 28, fadeColor(Color(220, 230, 255, 255), k));
+	}
+	else
+	{
+		snprintf(buf.ptr, buf.length, "Final score: %d", score);
+		centerText(buf.ptr, 245, 32, fadeColor(Color(255, 230, 120, 255), k));
+
+		if (timeLimit <= 0)
+			snprintf(buf.ptr, buf.length, "Trash cleared: %d", cleared);
+		else
+			snprintf(buf.ptr, buf.length, "Trash cleared: %d / %d", cleared, totalSpawned);
+		centerText(buf.ptr, 295, 28, fadeColor(Color(220, 230, 255, 255), k));
+
+		if (timeLimit <= 0)
+		{
+			int s = cast(int) elapsed, b = bestEndless;
+			snprintf(buf.ptr, buf.length, "Time: %d:%02d   Best time: %d:%02d",
+				s / 60, s % 60, b / 60, b % 60);
+		}
+		else snprintf(buf.ptr, buf.length, "Best score: %d", bestScore);
+		centerText(buf.ptr, 338, 28, fadeColor(Color(220, 230, 255, 255), k));
+}
 
 	const(char)*[2] items = ["Restart", "Menu"];
 	return techList(items[], 410, 60, k);

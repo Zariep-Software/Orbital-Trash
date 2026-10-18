@@ -1,9 +1,11 @@
 module common;
 
 public import raylib;
+public import save : N_UPG;
 import core.stdc.math : sqrtf, cosf, sinf;
+import core.stdc.stdio : snprintf;
 
-import save : saveBest;
+import save : saveBest, saveBestProg, saveBestEndless, deleteProg;
 
 // screen / world //
 enum int BASE_W = 1280;
@@ -38,7 +40,9 @@ enum float MEMBRANE_ACCEL = 90.0f;
 
 enum int MAX_PART = 400;
 enum int MENU_ITEMS = 3; // main: play, settings, quit
-enum int PLAY_ITEMS = 6; // submenu: 30s, 60s, 90s, custom, endless, Back
+enum int PLAY_ITEMS = 3; // play: Arcade, Progressive, Back
+enum int ARCADE_ITEMS = 7; // arcade: 60, 90, 120, custom, endless, items toggle, Back
+enum int PROG_ITEMS = 3; // progressive: Continue, New Game / demo, Back
 
 enum State
 {
@@ -55,7 +59,35 @@ enum MenuMode
 {
 	main,
 	play,
+	arcade,
+	progressive,
+	confirmNew,
 	about
+}
+
+enum GameMode
+{
+	arcade,
+	progressive
+}
+
+// Order must match the tables in upgrades.d
+enum Upg
+{
+	pullRange,
+	pushForce,
+	extraHp,
+	hpSlot,
+	brake
+}
+static assert(Upg.max + 1 == N_UPG);
+
+enum PauseAct
+{
+	cont,
+	save,
+	settings,
+	exit
 }
 
 struct Particle
@@ -70,6 +102,10 @@ struct Input
 	bool left, right, fwd, brake, pull, push;
 }
 
+// Saving is not available on the web build
+version (WebAssembly) enum bool CAN_SAVE = false;
+else enum bool CAN_SAVE = true;
+
 // game state //
 __gshared State state = State.menu;
 __gshared Particle[MAX_PART] parts;
@@ -81,18 +117,80 @@ __gshared int customSeconds = 45;
 __gshared float timeLimit = 60;// 0 = endless
 __gshared float timeLeft = 0;
 __gshared float elapsed = 0;
-__gshared int score = 0;
+__gshared int score = 0; // arcade: score. progressive: spendable points
+__gshared int earned = 0; // progressive: points earned in total (never spent)
 __gshared int bestScore = 0;
+__gshared int bestEndless = 0;
+__gshared int bestProg = 0;
 __gshared int cleared = 0;
 __gshared int totalSpawned = 0;
 __gshared int initialTrash = 0;
 __gshared int maxHp = 5;
+__gshared int baseMaxHp = 5;
 __gshared bool perfect = false;
 __gshared const(char)* endReason = "";
 __gshared bool endless = false;
 __gshared bool quitRequested = false;
 __gshared bool settingsFromPause = false; // where the settings overlay returns to
 __gshared bool aboutFocus = false;
+
+// modes / upgrades
+__gshared GameMode gameMode = GameMode.arcade;
+__gshared bool arcadeItems = false; // arcade: upgrade pickups enabled
+__gshared int[N_UPG] upgLvl; // current upgrade levels
+__gshared bool progHasSave = false;
+__gshared int progSaveEarned = 0;
+__gshared int shopClick = -1;
+
+// Notifications
+__gshared char[48] toastText;
+__gshared float toastTimer = 0;
+
+void showToast(const(char)* s)
+{
+	snprintf(toastText.ptr, toastText.length, "%s", s);
+	toastTimer = 2.0f;
+}
+
+// Upgrade multipliers
+float pullRangeMul()
+{
+	return 1.0f + 0.20f * upgLvl[Upg.pullRange];
+}
+
+float pushForceMul()
+{
+	return 1.0f + 0.25f * upgLvl[Upg.pushForce];
+}
+
+float brakeMul()
+{
+	return 1.0f + 0.35f * upgLvl[Upg.brake];
+}
+
+// Pause menu layout depends on the mode
+int pauseCount()
+{
+	return (gameMode == GameMode.progressive && CAN_SAVE) ? 4 : 3;
+}
+
+PauseAct pauseAct(int i)
+{
+	if (i == 0) return PauseAct.cont;
+	if (gameMode == GameMode.progressive && CAN_SAVE)
+	{
+		if (i == 1) return PauseAct.save;
+		if (i == 2) return PauseAct.settings;
+		return PauseAct.exit;
+	}
+	if (i == 1) return PauseAct.settings;
+	return PauseAct.exit;
+}
+
+int pauseSettingsIndex()
+{
+	return (gameMode == GameMode.progressive && CAN_SAVE) ? 2 : 1;
+}
 
 // Math //
 Vector2 vadd(Vector2 a, Vector2 b)
@@ -207,6 +305,12 @@ else
 	int playTop() { return 0; }
 }
 
+Rectangle shopRect(int i)
+{
+	enum float BW = 108, GAP = 8;
+	return Rectangle(498.0f + i * (BW + GAP), hudY() + 16.0f, BW, 70.0f);
+}
+
 void drawText(const(char)* text, int x, int y, int size, Color c)
 {
 	DrawTextEx(gameFont, text, Vector2(x, y), size, size * 0.04f, c);
@@ -221,10 +325,27 @@ int measureText(const(char)* text, int size)
 void endGame(const(char)* reason)
 {
 	endReason = reason;
-	if (score > bestScore)
+	if (gameMode == GameMode.progressive)
 	{
-		bestScore = score;
-		saveBest(bestScore);
+		deleteProg();
+		if (earned > bestProg)
+		{
+			bestProg = earned;
+			saveBestProg(bestProg);
+		}
+	}
+	else
+	{
+		if (score > bestScore)
+		{
+			bestScore = score;
+			saveBest(bestScore);
+		}
+		if (timeLimit <= 0 && cast(int) elapsed > bestEndless)
+		{
+			bestEndless = cast(int) elapsed;
+			saveBestEndless(bestEndless);
+		}
 	}
 	state = State.over;
 	menuSel = 0;

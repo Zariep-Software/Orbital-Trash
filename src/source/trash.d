@@ -161,6 +161,9 @@ void updateSpawning(float dt)
 
 void updateTrash(float dt, Actions act)
 {
+	float pRange = pullRange();
+	float pushMul = pushForceMul();
+
 	foreach (ref t; trash)
 	{
 		if (!t.alive) continue;
@@ -171,9 +174,9 @@ void updateTrash(float dt, Actions act)
 		if (t.pulled > 0) t.pulled -= dt;
 		if (t.pushed > 0) t.pushed -= dt;
 
-		if (act.pulling && dist < PULL_RANGE)
+		if (act.pulling && dist < pRange)
 		{
-			float f = 1.0f - dist / PULL_RANGE;
+			float f = 1.0f - dist / pRange;
 			t.vel = vadd(t.vel, vmul(n, PULL_FORCE * (f + f * f) * dt / sqrtf(t.mass)));
 			t.pulled = 0.8f;
 		}
@@ -191,7 +194,7 @@ void updateTrash(float dt, Actions act)
 				boost = 1.5f;
 				t.pulled = 0;
 			}
-			t.vel = vadd(t.vel, vmul(n, PUSH_FORCE * f * boost / t.mass));
+			t.vel = vadd(t.vel, vmul(n, PUSH_FORCE * pushMul * f * boost / t.mass));
 			t.pushed = 5.0f; // counts as "yours" for the next 5 seconds
 		}
 
@@ -236,12 +239,14 @@ void updateTrash(float dt, Actions act)
 			float rocketDist = vlen(vsub(rocket.pos, t.pos));
 
 			// prevent ghost destroys
-			bool mine = t.pushed > 0 || rocketDist < PULL_RANGE*2.5;
+			bool mine = t.pushed > 0 || rocketDist < pRange * 2.5f;
 			if (mine)
 			{
 				t.alive = false;
 				cleared++;
-				score += (t.pulled > 0) ? cast(int)(t.points * 1.5f) : t.points;
+				int gain = (t.pulled > 0) ? cast(int)(t.points * 1.5f) : t.points;
+				score += gain;
+				earned += gain;
 				burst(t.pos, 14, Color(80, 255, 140, 255), 150, 0.5f);
 				playSfx(sGExplosion);
 				continue;
@@ -266,4 +271,3 @@ void updateTrash(float dt, Actions act)
 		}
 	}
 }
-

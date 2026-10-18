@@ -23,6 +23,17 @@ bool pullHeld()
 	return IsKeyDown(keyFor(Bind.pull)) || IsKeyDown(KeyboardKey.KEY_O);
 }
 
+int shopKeyPressed()
+{
+	foreach (i; 0 .. 5)
+	{
+		if (IsKeyPressed(cast(KeyboardKey)(KeyboardKey.KEY_ONE + i))
+			|| IsKeyPressed(cast(KeyboardKey)(KeyboardKey.KEY_KP_1 + i)))
+			return i;
+	}
+	return -1;
+}
+
 // Navigation //
 bool pausePressed()
 {
