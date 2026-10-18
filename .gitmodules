@@ -1,0 +1,6 @@
+[submodule "make/android"]
+	path = make/android
+	url = https://github.com/zariep-software/raylib-d-android-template
+[submodule "make/web"]
+	path = make/web
+	url = https://github.com/zariep-software/raylib-d-wasm-build

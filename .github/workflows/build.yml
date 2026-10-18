@@ -1,0 +1,45 @@
+name: Build Linux
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ldc-latest
+
+      - name: Install raylib build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential git libasound2-dev libx11-dev libxrandr-dev \
+            libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
+            libxinerama-dev libwayland-dev libxkbcommon-dev
+
+      - name: Build raylib (static)
+        run: |
+          git clone --depth 1 --branch 6.0 https://github.com/raysan5/raylib.git /tmp/raylib
+          make -C /tmp/raylib/src PLATFORM=PLATFORM_DESKTOP RAYLIB_LIBTYPE=STATIC -j"$(nproc)"
+          cp /tmp/raylib/src/libraylib.a src/
+
+      - name: Build game
+        working-directory: src
+        run: dub build --build=release --config=default
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: orbital-trash-linux
+          path: src/orbital-trash-gnu.x86_64
+          if-no-files-found: error

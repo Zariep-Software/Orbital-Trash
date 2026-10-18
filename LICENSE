@@ -1,0 +1,39 @@
+========================================================================
+Zariep Software Project - Split Licensing Notice
+========================================================================
+
+This repository contains elements under separate licenses. Please read the
+boundaries below carefully.
+
+GAME CODE & SCRIPTS (GNU GPLv3)
+--------------------------------
+All source code files inside /src/source and related core configuration files
+(e.g., dub.json) are licensed under the GNU General Public License v3.0.
+
+SUBMODULES & BUILD TOOLS (MIT License)
+--------------------------------------
+The build environment folder /make/android is a separate Git submodule
+and is distributed under the MIT License. See /src/buildweb/LICENSE
+for the full text.
+
+The build environment folder /make/web is a separate Git submodule
+and is distributed under the MIT License. See /src/buildweb/LICENSE
+for the full text.
+
+IMAGE ASSETS (CC BY-NC 4.0)
+---------------------------
+Unless otherwise stated, all visual assets and artwork in /src/assets/sprites
+and /assets-svg are copyright (c) 2026 Zariep Software and licensed under
+the Creative Commons Attribution-NonCommercial 4.0 International License.
+
+AUDIO ASSETS (CC BY-NC 4.0)
+---------------------------------------
+nless otherwise stated, all audio in /src/assets/sfx and /src/assets/music
+and /assets-svg are copyright (c) 2026 Zariep Software and licensed under
+the Creative Commons Attribution-NonCommercial 4.0 International License.
+
+FONTS (SIL OFL 1.1)
+-------------------
+Font software located in /src/assets/fonts/ is licensed under the SIL Open
+Font License 1.1. These are distributed independently and are not subject
+	to the GPLv3 or CC BY-NC licenses.
